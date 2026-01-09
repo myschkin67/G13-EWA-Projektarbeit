@@ -1,30 +1,38 @@
 <?php
+// wir starten einen puffer, damit keine warnungen das json kaputt machen
+ob_start();
+
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type");
 header("Content-Type: application/json; charset=UTF-8");
 
-// preflight anfrage abfangen
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    ob_end_clean();
     http_response_code(200);
     exit;
 }
 
-require_once 'db.php';
-require_once 'stripe-php/init.php'; // stripe laden
+// fehler verstecken (für den user), wir wollen sauberes json
+error_reporting(0);
+ini_set('display_errors', 0);
 
-// dein stripe key
+require_once 'db.php';
+require_once 'stripe-php/init.php';
+
+// dein key
 \Stripe\Stripe::setApiKey('sk_test_51Sf50LPfKVgT4yvvCI5xo9GviVESNd1BlTuMgDcWd7NRkxuSu8h0K9D8TgIlNPUwVEBSzgvgephBQ3wUQYVYcniB00DVPSBBer'); 
 
 $input = json_decode(file_get_contents("php://input"), true);
 
 if (!isset($input['cart']) || empty($input['cart'])) {
+    ob_end_clean();
     http_response_code(400);
-    echo json_encode(["error" => "korb leer"]);
+    echo json_encode(["error" => "warenkorb leer"]);
     exit;
 }
 
-// kundendaten vorbereiten
+// kundendaten verpacken
 if (isset($input['customer'])) {
     $customer_json = json_encode($input['customer'], JSON_UNESCAPED_UNICODE);
 } else {
@@ -34,8 +42,6 @@ if (isset($input['customer'])) {
 $line_items = [];
 $total_amount = 0;
 
-// wir vertrauen nicht dem preis vom frontend,
-// sondern holen die echten preise aus der db
 foreach ($input['cart'] as $item) {
     $stmt = $conn->prepare("SELECT price, title, stock FROM products WHERE id = ?");
     $stmt->bind_param("i", $item['id']);
@@ -46,21 +52,23 @@ foreach ($input['cart'] as $item) {
     
     if ($product_db) {
         $qty = (int)$item['qty'];
+        $stock = (int)$product_db['stock']; // sicherstellen dass es int ist
         
-        // checken ob genug da ist
-        if ($product_db['stock'] < $qty) {
+        // bestand checken
+        if ($stock < $qty) {
+            ob_end_clean();
             http_response_code(400);
-            echo json_encode(["error" => "nicht genug bestand bei: " . $product_db['title']]);
+            echo json_encode(["error" => "Zu wenig Bestand bei: " . $product_db['title'] . " (Nur noch $stock da)"]);
             exit;
         }
 
-        // bestand abziehen (reservieren)
+        // abziehen
         $update = $conn->prepare("UPDATE products SET stock = stock - ? WHERE id = ?");
         $update->bind_param("ii", $qty, $item['id']);
         $update->execute();
         $update->close();
 
-        // item für stripe zusammenbauen
+        // preis
         $price_cent = (int)((float)$product_db['price'] * 100);
         $total_amount += ((float)$product_db['price'] * $qty);
 
@@ -75,15 +83,14 @@ foreach ($input['cart'] as $item) {
     }
 }
 
-// bestellung in die orders tabelle speichern
+// bestellung speichern (jetzt funktioniert es, weil die spalte da ist!)
 $insertOrder = $conn->prepare("INSERT INTO orders (customer_data, total_price) VALUES (?, ?)");
 $insertOrder->bind_param("sd", $customer_json, $total_amount);
 $insertOrder->execute();
 $insertOrder->close();
 
 try {
-    // wir müssen gucken wo das script läuft. lokal ist es localhost, auf dem server die uni adresse.
-    // sonst leitet stripe falsch zurück.
+    // redirect url bestimmen
     if ($_SERVER['HTTP_HOST'] === 'localhost' || $_SERVER['HTTP_HOST'] === '127.0.0.1') {
         $domain = 'http://localhost:5173';
     } else {
@@ -98,9 +105,12 @@ try {
         'cancel_url' => $domain . '/?status=cancel',
     ]);
 
+    // puffer leeren und json rausgeben
+    ob_end_clean();
     echo json_encode(['id' => $session->id]);
 
 } catch (Exception $e) {
+    ob_end_clean();
     http_response_code(500);
     echo json_encode(['error' => $e->getMessage()]);
 }
