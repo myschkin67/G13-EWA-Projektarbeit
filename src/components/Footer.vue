@@ -1,6 +1,6 @@
 <template>
   <footer class="footer">
-    <p>&copy; 2025 Gruppe 13 - Daniel, Karim & Etienne</p>
+    <p>&copy; 2025 Gruppe 13 - Daniel, Rohullah & Etienne</p>
     <p><small>APL Entwicklung Webbasierter Anwendungen</small></p>
   </footer>
 </template>

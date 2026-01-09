@@ -1,24 +1,23 @@
 <?php
-// WICHTIG: Erlaubt Zugriff von Port 5173 auf Port 80
+// header setzen damit vue auch vom anderen server zugreifen kann (cors)
 header("Access-Control-Allow-Origin: *");
 header("Content-Type: application/json; charset=UTF-8");
 
 require_once 'db.php';
 
-// Simpler Abruf aller Produkte
 $sql = "SELECT * FROM products";
 $result = $conn->query($sql);
 
-$products = [];
+$data = [];
 if ($result) {
     while($row = $result->fetch_assoc()) {
-        // Zahlen auch wirklich als Zahlen senden
+        // zahlen müssen auch wirklich zahlen sein
         $row['price'] = (float)$row['price'];
         $row['stock'] = (int)$row['stock'];
-        $products[] = $row;
+        $data[] = $row;
     }
 }
 
-echo json_encode($products, JSON_UNESCAPED_UNICODE);
+echo json_encode($data, JSON_UNESCAPED_UNICODE);
 $conn->close();
 ?>

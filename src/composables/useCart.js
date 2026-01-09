@@ -1,27 +1,28 @@
 import { ref, computed } from 'vue';
 
+// wir machen die cart variable ausserhalb der funktion.
+// damit bleibt der warenkorb erhalten auch wenn man die seite wechselt (singleton).
 const cart = ref([]);
 
 export function useCart() {
   
-  // Funktion: Zum Warenkorb hinzufügen
+  // produkt hinzufügen, aber vorher checken ob bestand reicht
   const addToCart = (product) => {
-    // 1. Ist überhaupt Bestand da?
+    // erst mal schauen ob überhaupt bestand da ist
     if (product.stock <= 0) return "ausverkauft";
 
     const item = cart.value.find(i => i.id === product.id);
     const currentQty = item ? item.qty : 0;
 
-    // 2. Würde das Hinzufügen das Limit sprengen?
+    // wir dürfen nicht mehr reinlegen als im lager ist
     if (currentQty + 1 > product.stock) {
-      return "limit_reached"; // Neuer Rückgabewert!
+      return "limit_reached"; 
     }
 
-    // 3. Hinzufügen erlaubt
     if (item) {
       item.qty++;
     } else {
-      // Wir speichern 'stock' mit im Warenkorb, um später Limits zu prüfen
+      // kopie vom produkt machen und menge auf 1 setzen
       cart.value.push({ ...product, qty: 1 });
     }
     return "success";
@@ -31,30 +32,36 @@ export function useCart() {
     cart.value.splice(index, 1);
   };
 
-  // Funktion: Menge im Warenkorb ändern (+/-)
+  // logik für plus/minus buttons
   const updateCartQty = (item, change) => {
     const newQty = item.qty + change;
 
-    // A. Prüfung: Lagerbestand überschritten?
-    if (change > 0 && newQty > item.stock) {
-      return false; // WICHTIG: Wir geben FALSE zurück -> "Hat nicht geklappt"
+    // beim erhöhen müssen wir wieder das limit prüfen
+    if (change > 0) {
+      if (newQty > item.stock) {
+        return false; // ging nicht, fehler zurückgeben
+      }
     }
 
-    // B. Alles ok -> ändern
     item.qty = newQty;
+
+    // wenn menge 0 ist, fliegt der artikel ganz raus
     if (item.qty <= 0) {
       cart.value = cart.value.filter(i => i.id !== item.id);
     }
     
-    return true; // WICHTIG: Wir geben TRUE zurück -> "Hat geklappt"
+    return true; 
   };
-// ...
 
+  // summe berechnen
   const cartTotal = computed(() => {
     return cart.value.reduce((sum, item) => sum + (item.price * item.qty), 0);
   });
 
-  const vatAmount = computed(() => cartTotal.value * 0.07);
+  // mehrwertsteuer 7% (laut aufgabe)
+  const vatAmount = computed(() => {
+    return cartTotal.value * 0.07; 
+  });
 
   const totalItems = computed(() => {
     return cart.value.reduce((sum, item) => sum + item.qty, 0);
